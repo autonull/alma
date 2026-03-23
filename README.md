@@ -469,17 +469,42 @@ This research builds autonomous agents that generate their own goals. This capab
 
 **Dual use.** Techniques for steering language model activations can be applied beneficially (style control, knowledge mapping) or harmfully (generating targeted disinformation, bypassing safety filters). We note that activation addition is already a published technique (Turner et al., 2023\) and that this project's contribution is the autonomous planner, not the steering mechanism itself. We encourage the community to develop corresponding detection and defense methods alongside steering capabilities.
 
-## Citation
+----
 
-@misc{alma2025,
+**Toward a Modular Autonomous Cognitive Architecture – Separating Causal Beliefs from Self-Evolving Goals**
 
-  title={Autonomous Cognitive Architecture: Separating Causal Beliefs 
+The central challenge in contemporary large-scale language models is that they remain fundamentally reactive pattern-matchers. Trained end-to-end, their statistical implications (what we might call “beliefs” about how sequences causally connect) inevitably become entangled with whatever objectives are imposed during alignment—whether through human preference data, reward models, or direct optimization. The result is a system whose “knowledge” is subtly warped by its imposed “wants,” producing the familiar pathologies of hallucination drift, sycophancy, or goal contamination. True autonomy—where an agent can generate, pursue, revise, and meta-reason about its own drives without those drives retroactively rewriting its evidence base—remains elusive.
 
-         from Self-Evolving Goals in Language Models},
+The research program we have developed addresses this by enforcing a strict architectural separation, inspired by the clean division seen in certain cognitive architectures but realized here in a purely transformer-native, scalable way. At its core is a two-module design:
 
-  year={2025},
+- A **frozen causal belief engine** that holds only immutable statistical implications—raw next-token tendencies and hidden-state representations derived from pre-training. This component is never updated after initialization; it functions as a neutral oracle, supplying possibilities without agenda or self-modification.  
+- A lightweight, fully trainable **goal/planner module** that owns all volition, memory, hierarchy, and steering. This module alone receives gradients. It reads (but never writes to) the belief engine’s states, maintains its own internal memory of past intentions versus outcomes, and decides how to influence the next generation cycle.
 
-  note={Research in progress}
+This separation guarantees belief purity: any observed change in the system’s exploratory behavior arises solely from evolution in the planner, never from contamination of the underlying causal map. The planner can be instantiated in multiple configurations explored across iterations:
+
+- A flat, reactive director that simply scores and nudges immediate outputs.  
+- A hierarchical/recursive variant that builds goal trees or stacks, spawning sub-goals, backtracking on dead-ends, and reordering priorities—enabled by a switchable mode that the planner itself learns to toggle.  
+- A continuous latent formulation in which goals exist as vectors in embedding space rather than discrete text phrases, allowing fast, non-autoregressive planning and direct injection via activation steering (adding projected vectors into the residual stream at chosen layers).
+
+Steering itself is realized through lightweight, reversible mechanisms—activation addition, cache augmentation, or reweighting of candidate distributions—applied only at inference time and fully controlled by the planner. Memory is maintained as a compact buffer of concatenated intention-outcome vectors, enabling the planner to compare what it “wanted” versus what actually emerged, supporting both short-term adaptation and longer-term goal revision.
+
+The training signal is deliberately internal and judge-free. Early formulations relied on pure novelty (KL divergence or embedding-space surprise), but this quickly revealed the classic “noisy-TV” collapse: the planner would chase maximum unpredictability, producing linguistic static. The refined intrinsic reward therefore balances two opposing forces:
+
+- **Novelty / epistemic surprise**: measured as deviation from the recent memory manifold (cosine or KL in outcome space), encouraging exploration of new semantic regions.  
+- **Coherence / linguistic validity anchor**: a perplexity-based penalty computed against an unsteered forward pass of the same generated tokens, ensuring that steering remains within the natural manifold of the belief engine. Additional bonuses for hierarchical persistence (successful multi-step topic maintenance) and progress (measurable shift in hidden states) round out the signal.
+
+Because the reward is generated entirely from the interaction between planner actions and belief-engine responses—no external preference model, no human labels, no second critic LLM—the system bootstraps its own curiosity. Over training, the planner learns to chase coherent novelty: short random pokes evolve into longer, semantically adjacent chains (e.g., drifting from physical concepts to related thought experiments to meta-questions). Hierarchical mode activates precisely when shallow exploration plateaus, producing deeper persistence followed by informed pivots. The entire loop is self-sustaining: the planner generates its next latent intention, steers, observes the outcome, updates memory, recomputes reward, and continues—potentially indefinitely.
+
+The overarching objective is to demonstrate that genuine agentic autonomy emerges from this clean separation. Success is measured not by task completion or human-aligned helpfulness, but by observable signatures of self-directed cognition:
+
+- Spontaneous goal self-generation and revision without external prompts.  
+- Emergence of coherent, lengthening exploration chains whose topic shifts are driven by internal surprise-coherence dynamics rather than randomness.  
+- Intelligent mode switching (flat for quick scanning, hierarchical for focused investigation).  
+- Unchanging belief purity: the frozen engine’s raw outputs remain statistically identical before and after thousands of autonomous cycles.
+
+By first validating the architecture at minimal scale on commodity hardware, we establish feasibility before scaling the belief engine upward while keeping the planner fixed. The program deliberately explores a spectrum of planner designs—flat versus hierarchical, text versus latent, simple steering versus multi-tool kits—within a single modular framework, allowing systematic ablation of each component.
+
+Ultimately, this line of research aims to produce cognitive systems that are not merely aligned simulators but genuine autonomous explorers: minds that possess beliefs about the world and independent goals about what to do with those beliefs, evolving both without mutual corruption. If the separation holds and intrinsic curiosity yields coherent self-directed behavior, we obtain a foundational blueprint for scalable, open-ended agency—one that sidesteps the contamination traps of monolithic training and opens the door to agents that can wake up, wonder, and wander on their own terms.
 
 }
 
