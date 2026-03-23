@@ -511,3 +511,38 @@ Every 100 steps, compute pairwise cosine similarity between the last 100 steerin
 8. **Multi-layer steering.** 1–2 hours. Richer control.  
 9. **Latent trajectory visualization.** 1 hour. The "aha" plot for understanding what the agent learns.  
 10. **Hierarchical sub-goals.** 4–6 hours. The path to paragraph-level generation.
+
+----
+
+Yeah—there *are* benchmarks, but they're not perfect fits because ALMA's so... weirdly pure. No tasks, no labels, no human eval—just self-play. Still, here's what actually works (and why most won't):
+
+**Best real ones to steal from (plug-and-play):**  
+1. **BabyAI** (or MiniGrid) — tiny grid worlds, natural-language commands.  
+   Why it fits: you can "steer" toward novelty (explore unseen rooms) + coherence (follow grammar). No reward needed—just let the planner chase "new tiles" and "logical sentences." Run 10k episodes; measure if it learns to navigate without ever seeing a reward. If it does? Boom—proof of unsupervised exploration.  
+
+2. **Procgen** (like CoinRun or Maze) — procedural, no memorization.  
+   Same trick: planner steers activations to "find coins" or "solve mazes" via novelty + consistency (does this path loop?). Track: does average path length drop over time? That's your "learning curve" without cheating.  
+
+3. **TextWorld** — text adventure games (Zork-lite).  
+   Planner generates commands; frozen LLM parses world state. Score: novelty (new rooms/items) + coherence (valid syntax). If it starts winning games on its own? That's gold—shows it builds mental models.  
+
+**Quick hack to make 'em ALMA-friendly:**  
+- Freeze the LLM on world knowledge (no fine-tune).  
+- Planner outputs activation vectors or prompt prefixes.  
+- Reward = novelty (embedding diff) + coherence (perplexity) + consistency (does action match last state?).  
+- No ground-truth—just self-scores.  
+
+**If you want zero-code benchmarks:**  
+- **GSM8K** (math word problems) — but twist it: planner tries to "explore" solutions, scores novelty + correctness (via frozen LLM's own judgment).  
+- **BigBench** subsets — pick "logical deduction" or "analogies." Let it generate chains, score internal consistency.  
+
+**Why not everything?**  
+Most benches (GLUE, MMLU, ARC) want *accuracy*—ALMA doesn't care about being right, just being... interesting and sane. So you get "creative but wrong" unless coherence wins out. That's why start with games: they reward structure without needing truth.  
+
+**My pick for you:** BabyAI + PPO.  
+- Colab-ready.  
+- Visual (record GIFs of agent wandering).  
+- Measurable: "steps to first goal" vs. random baseline.  
+- If planner learns faster than random? Tweet it—"No rewards, no humans, still solves mazes."  
+
+Want me to grab the BabyAI env link and a starter script?
