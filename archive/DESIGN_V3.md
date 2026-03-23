@@ -1,0 +1,347 @@
+# ALMA v3 — Design Specification
+
+## The Paradigm Shift
+
+v1 asked: *Can a language model explore semantic space autonomously?*
+v2 asked: *Can we make that exploration efficient?*
+v3 asks: **Can autonomous exploration produce knowledge that's genuinely useful to humans?**
+
+This is not a refinement. It's a category change.
+
+v1 and v2 produce ephemeral text — computation whose only lasting trace is small weight updates. Every interesting thought the system has evaporates at the end of the session. The intrinsic reward optimizes an internal metric that no human ever sees. The system has no output in any meaningful sense.
+
+v3 makes the output explicit. Exploration is the *process*. Structured, persistent, queryable **knowledge artifacts** are the *product*. The system doesn't just wander — it navigates toward understanding, crystallizes what it finds, and hands something useful back.
+
+---
+
+## What v2 Still Lacks
+
+v2 is a well-functioning curiosity engine. But:
+
+- **No goals**: novelty-for-novelty's-sake has no terminus. The agent explores forever without producing anything.
+- **No artifact**: generated text is discarded after each step. Nothing accumulates.
+- **No domain grounding**: the prompt pool is a list of strings, not a meaningful target.
+- **No self-assessment**: the agent has no way to recognize a good idea when it has one.
+- **No strategy**: exploration is flat. Deep dives and lateral leaps are treated identically.
+- **No communication**: there is no designed channel between system and user.
+
+v3 addresses all six simultaneously through a unified architecture.
+
+---
+
+## Architecture Overview
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                        MACRO LEVEL                              ║
+║   Session Goal (user-defined or autonomously generated)          ║
+║   Represented as a fixed goal embedding + natural language desc  ║
+╚══════════════════════╦═══════════════════════════════════════════╝
+                       ║ conditions
+╔══════════════════════▼═══════════════════════════════════════════╗
+║                       MESO LEVEL                                 ║
+║   Thread Manager: selects exploration strategy from library       ║
+║   Strategies: analogical, causal, adversarial, synthetic, etc.   ║
+║   Thread runs 10–50 micro steps, then terminates                 ║
+╚══════════════════════╦═══════════════════════════════════════════╝
+                       ║ conditions
+╔══════════════════════▼═══════════════════════════════════════════╗
+║                       MICRO LEVEL  (v2 core)                     ║
+║   PrefixPolicy → generation → teacher-forcing → reward           ║
+║   Reward now conditioned on goal embedding + thread strategy      ║
+╚══════════════════════╦═══════════════════════════════════════════╝
+                       ║ trace
+╔══════════════════════▼═══════════════════════════════════════════╗
+║                    CRYSTALLIZER                                  ║
+║   Reads thread trace → extracts structured claims                ║
+║   Scores: novelty, specificity, goal alignment, self-consistency  ║
+╚══════════════════════╦═══════════════════════════════════════════╝
+                       ║ claims + scores
+╔══════════════════════▼═══════════════════════════════════════════╗
+║                  KNOWLEDGE STORE                                  ║
+║   Indexed claims with embeddings                                  ║
+║   Contradiction map, uncertainty map, question graph             ║
+║   Searchable across sessions                                     ║
+╚══════════════════════╦═══════════════════════════════════════════╝
+                       ║ quality statistics by strategy
+╔══════════════════════▼═══════════════════════════════════════════╗
+║               EXPLORATION CURRICULUM                             ║
+║   Multi-armed bandit over thread strategies                       ║
+║   High-quality threads selected more often over time             ║
+╚══════════════════════╦═══════════════════════════════════════════╝
+                       ║ updates thread selection distribution
+                       ╚══════════ feeds back to Thread Manager
+```
+
+Three nested loops, each operating at a different timescale. Each loop closes back onto the one above it.
+
+---
+
+## Innovation 1: Purposive Hierarchy
+
+### The Problem with Flat Exploration
+
+v2 explores with uniform intensity everywhere. There is no difference between a passing association and a deep vein of insight. The curiosity reward treats both identically. Real intellectual exploration is structured — you notice something promising, commit to it, go deep, then surface and pivot. v2 cannot commit.
+
+### The Solution: Three Temporal Scales
+
+**Macro (session scale):** A goal embedding defines the semantic neighborhood the session operates within. This is either user-provided as text ("investigate the relationship between X and Y") or auto-generated by the system based on detected gaps in the Knowledge Store. The goal embedding is frozen for the session — it doesn't change as exploration proceeds. This provides a stable attractor without an overly rigid constraint.
+
+**Meso (thread scale):** A Thread Manager selects an exploration *strategy* — not a topic, but a *mode of inquiry* — and pursues it for 10 to 50 micro steps before terminating and launching a new thread. The strategy library includes:
+
+- **Analogical**: find structural similarities to distant domains
+- **Causal**: trace mechanism chains (what causes what, and why)
+- **Adversarial**: actively seek counterexamples and failure modes
+- **Synthetic**: combine two previously crystallized claims into something new
+- **Interrogative**: convert claims into open questions, then explore answers
+- **Extreme cases**: push concepts to limits (what happens at scale-0? scale-∞?)
+- **Historical**: locate the claim in developmental context (why did this idea emerge when it did?)
+
+These strategies are not hard-coded behaviors — they are *conditioning inputs* to the micro-level prefix policy. The Thread Manager outputs a strategy embedding that is concatenated with the goal embedding and memory summary before prefix generation. The micro level behaves differently under each strategy not because of explicit programming but because the conditioning changes what kinds of text earn high reward.
+
+**Micro (step scale):** v2's core loop, unchanged in mechanism, but now conditioned on both goal and strategy. The reward function gains a third term: goal alignment (cosine similarity between the generated state and the goal embedding). Exploration that wanders too far from the session goal is penalized.
+
+### Asymmetric Learning Rates
+
+This three-level structure maps onto three different update frequencies:
+
+- Macro goal: updated once per session (or never — user-fixed)
+- Thread strategy selection: updated once per thread completion
+- Prefix policy weights: updated every micro step
+
+This is not arbitrary. It mirrors the well-documented separability of fast episodic memory (hippocampus: per-step) from slow semantic memory (cortex: across many episodes). Systems with this property generalize better and are less prone to catastrophic forgetting.
+
+---
+
+## Innovation 2: Knowledge Crystallization
+
+### The Core Idea
+
+After each thread completes, a **Crystallizer** reads the full generation trace (all micro-step text outputs from the thread) and extracts structured claims. These claims are stored persistently, scored for quality, and made available for search.
+
+This is the output interface. This is what v3 hands back to the user.
+
+### Claim Schema
+
+Each crystallized claim carries:
+
+```
+{
+  text:          Natural language statement
+  type:          hypothesis | observation | connection | question
+                 | contradiction | analogy | boundary
+  confidence:    0–1  (derived from self-consistency checks)
+  novelty:       0–1  (cosine distance from all prior claims in store)
+  goal_align:    0–1  (similarity to session goal embedding)
+  source_thread: which strategy generated this
+  session_id:    cross-session traceability
+  challenged:    was this claim subjected to adversarial thread?
+  survived:      did it survive adversarial challenge?
+}
+```
+
+### Crystallization Mechanism
+
+The Crystallizer does not need to be trained. It operates via **structured prompting** of the same base LM that generated the trace. Given the exploration trace, it is prompted to:
+1. Identify the strongest distinct claim the trace is making
+2. Classify it by type
+3. Express it as a single falsifiable sentence
+4. Rate its own confidence
+
+This is a well-understood few-shot extraction pattern. No additional training required. The same base model used for exploration is repurposed for extraction — the system is self-contained.
+
+### The Knowledge Store
+
+Not a vector database in the traditional sense. A lightweight, local structure:
+
+- A list of claims with precomputed embeddings
+- A **contradiction index**: pairs of claims whose embeddings are highly similar but whose natural language content is semantically opposed (detected by a simple entailment check or cosine of negated embeddings)
+- A **question graph**: open questions (type=question) linked to claims that partially answer them
+- An **uncertainty frontier**: claims with high novelty but low confidence — these are targets for future exploration
+
+The store is queryable by: similarity to a query string, claim type, confidence threshold, session. It is cross-session — it persists between runs and grows as the system is used.
+
+### Quality Score as Feedback Signal
+
+The quality of each crystallized claim feeds back into the micro-level reward. At the end of a thread:
+
+```
+thread_reward = mean_quality(crystallized_claims_in_thread)
+            = w_nov × novelty + w_spec × specificity + w_align × goal_align
+```
+
+This retroactive thread reward adjusts the weights of the Thread Manager via the Exploration Curriculum. Threads that reliably produce high-quality claims are selected more often.
+
+This creates a second-order training signal — one operating at the meso level, not the micro level.
+
+### Self-Verification via Adversarial Threads
+
+Any claim generated by a standard thread can be targeted by an **adversarial thread**, which runs the same exploration loop but with the goal embedding *negated* (or the goal rewritten as: "find reasons why [claim] is wrong, limited, or misleading").
+
+Claims that survive adversarial scrutiny — where the adversarial thread fails to produce strong counterevidence — are marked `survived=True` and assigned higher confidence.
+
+This is a lightweight form of self-play. It doesn't require a second model or external validation. It costs one additional thread per claim challenged.
+
+---
+
+## Innovation 3: Exploration Curriculum
+
+### The Problem
+
+A Thread Manager that selects strategies uniformly at random will waste many threads on approaches that consistently produce low-quality crystallizations for the given goal and domain. The system should learn from its own exploration history which strategies work.
+
+### The Solution: Multi-Armed Bandit over Strategies
+
+The Exploration Curriculum maintains a running quality estimate for each thread strategy, updated after every thread:
+
+```
+Q(strategy) ← Q(strategy) + α × (thread_reward − Q(strategy))
+```
+
+Thread selection uses Thompson sampling: sample an estimate from a Beta distribution for each strategy, select the highest. This naturally balances exploitation (use what works) with exploration (try underused strategies to refine estimates).
+
+Over 50–200 threads, the curriculum learns the strategy distribution that best serves the session goal. In a domain with heavy causal structure (science, engineering), causal threads will rise. In a domain with rich analogical structure (philosophy, design), analogical threads will rise. This happens automatically, without configuration.
+
+The curriculum is itself a form of meta-learning — learning how to learn about a domain.
+
+### Cross-Session Transfer
+
+Strategy quality estimates are stored alongside the Knowledge Store and are indexed by **goal embedding region**. When a new session begins with a similar goal, the curriculum initializes from the prior distribution rather than uniform. Exploration efficiency compounds across sessions.
+
+The system becomes faster and better at exploring domains it has explored before, while remaining general enough to handle new domains via uniform initialization.
+
+---
+
+## The Complete Loop
+
+What emerges from these three innovations is a self-reinforcing cycle:
+
+```
+Session goal
+    → Thread Manager (conditioned on curriculum)
+        → Micro exploration (conditioned on goal + strategy)
+            → Generation trace
+                → Crystallizer
+                    → Claims + quality scores
+                        → Knowledge Store (persists, grows)
+                        → Thread reward → curriculum update
+                        → Adversarial threads (for high-value claims)
+    → Uncertainty frontier highlights gaps in knowledge store
+        → Feeds back as implicit next-session goal suggestions
+```
+
+Every part of the system produces something that improves every other part. Exploration improves knowledge. Knowledge improves curriculum. Curriculum improves exploration. Adversarial threads improve claim confidence. Gaps in the store guide future sessions.
+
+---
+
+## Domain Applications
+
+v3 requires no structural changes to operate across domains. Adaptation is entirely through:
+1. The session goal (natural language description)
+2. The claim type vocabulary (can be domain-specific)
+3. The seed prompt pool (colored by domain)
+
+| Domain | Session Goal Example | Dominant Thread Types | Artifact Value |
+|---|---|---|---|
+| Scientific hypothesis generation | "Generate testable hypotheses about X" | Causal, Adversarial | Novel hypotheses with confidence and challenge record |
+| Strategic analysis | "Map risks and opportunities in Y market" | Adversarial, Extreme cases | Structured risk register with surfaced blind spots |
+| Creative concept development | "Develop the thematic space around Z" | Analogical, Synthetic | Concept network with unexplored tensions |
+| Software architecture | "Explore design tradeoffs for system W" | Causal, Adversarial | Decision matrix with surfaced failure modes |
+| Educational curriculum design | "Map the prerequisite structure of topic T" | Historical, Causal | Dependency graph with identified gaps |
+| Philosophy / ethics | "Explore the limits of principle P" | Adversarial, Boundary, Extreme cases | Structured argument map with challenges and defenses |
+
+The system is genuinely domain-general. The knowledge store schema adapts; the architecture does not.
+
+---
+
+## What v3 Is Not
+
+Being precise about scope is as important as the vision.
+
+**v3 does not execute external actions.** It does not browse the web, call APIs, or write files autonomously. It operates in pure semantic space. This is a feature: the risk profile is low, the system is fully auditable, and the outputs are inspectable before any downstream action is taken.
+
+**v3 does not replace domain experts.** The crystallized claims require human judgment to evaluate and act on. v3 surfaces the claims; humans verify them. The goal is augmentation, not automation.
+
+**v3 does not require external training data.** No labeled dataset, no preference annotations, no human feedback during exploration. The only human input is the session goal. This is the key feasibility advantage: the system is self-contained.
+
+**v3 does not guarantee claim accuracy.** The confidence score reflects internal self-consistency, not ground truth. Claims about the physical world need external grounding. Claims about conceptual structure and logical relationships are more reliably self-evaluated.
+
+---
+
+## Novelty Analysis
+
+| Comparison | Why v3 is Different |
+|---|---|
+| RLHF / RLAIF | Those require dense human preference labels per output. v3 generates its own quality signal from internal self-consistency. Human input is optional and sparse. |
+| Retrieval-Augmented Generation | RAG retrieves from fixed external corpora. v3 builds its own knowledge corpus through autonomous exploration. |
+| Chain-of-thought prompting | CoT is linear, single-pass, user-directed. v3 explores non-linearly across hundreds of steps with hierarchical self-direction. |
+| AutoGPT / agentic systems | Those execute external actions with tool use. v3 operates in semantic space only — no external side effects, fully auditable. |
+| Curiosity-driven RL (Schmidhuber, Pathak) | Prior work optimizes behavioral statistics in environment interaction. v3 produces structured, semantically meaningful knowledge artifacts as explicit output. |
+| Constitutional AI | Evaluation based on fixed principles. v3's self-evaluation is domain-adaptive and learned, not rule-based. |
+| Concept maps / argument mapping tools | Those require human construction. v3 constructs the map autonomously from its own exploration. |
+
+The combination — intrinsically motivated, hierarchically structured, domain-adaptive, artifact-producing, self-evaluating knowledge synthesis — does not exist as a prior system.
+
+---
+
+## Feasibility Analysis
+
+Every component in v3 has a clear, low-risk implementation path.
+
+| Component | Implementation | Risk Level |
+|---|---|---|
+| Goal embedding | `sentence-transformers` encoding of user text | Trivial |
+| Thread Manager | Small MLP or even categorical distribution over fixed strategies | Low |
+| Micro level (prefix + reward) | v2 directly, plus goal cosine term in reward | Low |
+| Crystallizer | Few-shot extraction prompt on base LM | Low |
+| Knowledge Store | Python list + `numpy` cosine similarity | Trivial |
+| Contradiction detection | Embedding similarity + negation heuristic | Low |
+| Exploration Curriculum | Thompson sampling with Beta distribution | Low |
+| Adversarial threads | Same loop, negated goal embedding | Low |
+| Cross-session persistence | JSON or SQLite | Trivial |
+
+The only genuinely novel engineering work is the Crystallizer integration and the meso-level Thread Manager. Both have straightforward implementations. Nothing in this architecture requires hardware beyond a single consumer GPU.
+
+A functional v3 prototype is achievable without research-level engineering.
+
+---
+
+## Failure Modes and Mitigations
+
+**Crystallizer hallucination:** The base LM extracts claims that aren't actually supported by the trace. Mitigation: require the Crystallizer to quote the specific trace passage supporting each claim. Claims without traceable support are rejected.
+
+**Goal embedding collapse:** All exploration converges to a narrow region near the goal, reducing diversity. Mitigation: the diversity reward from v2 is preserved at the micro level. Threads that are too similar to prior claims are penalized by the novelty scorer.
+
+**Strategy monoculture:** One thread strategy dominates the curriculum and the others are never explored. Mitigation: Thompson sampling naturally prevents this — underexplored strategies have high variance and are periodically selected.
+
+**Confidence inflation:** The system assigns high confidence to claims because they are internally consistent, not because they are true. Mitigation: mark this limitation explicitly in the artifact. Confidence scores are labelled "internal consistency" not "accuracy." Human grounding is required for external claims.
+
+**Thread length miscalibration:** Threads terminate too early (shallow) or too late (repetitive). Mitigation: convergence detection (if the last N states are too similar to the thread's centroid, terminate) plus a hard maximum budget.
+
+---
+
+## The Question v3 Opens
+
+v3 produces structured knowledge from autonomous exploration. The next question is:
+
+**Can the system learn to recognize when it has found something genuinely important — not just internally novel, but externally significant?**
+
+This requires some model of what "important" means relative to the world outside the system. That requires external grounding: connecting crystallized claims to existing knowledge bases, scientific literature, or human feedback. That is v4.
+
+v3 does not attempt this. v3 is the first step where the output is something a human can read, evaluate, and potentially use. Getting that step right — making the artifact genuinely inspectable and trustworthy — is the necessary foundation for anything beyond it.
+
+---
+
+## Summary
+
+| Level | v1 | v2 | v3 |
+|---|---|---|---|
+| What it does | Wanders | Wanders efficiently | Explores purposively |
+| What it produces | Ephemeral text | Ephemeral text (+ weight updates) | Structured knowledge artifacts |
+| Learning signal | REINFORCE on novelty | Direct gradient on intrinsic reward | Reward at micro + quality feedback at meso |
+| Goal structure | None | None | Three-level hierarchy |
+| Memory | Deque of vectors | Attention-queried buffer | Persistent cross-session knowledge store |
+| Human interface | Print log | Print log | Queryable artifact with confidence + challenge record |
+| Domain adaptation | Prompt swap | Prompt swap | Goal embedding + schema swap |
+| Key risk | Broken gradients | Attractor basins | Crystallizer quality + confidence inflation |
+| Fundamental question | Can it explore? | Can it explore well? | Can it produce useful knowledge? |
